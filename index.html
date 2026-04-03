@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NomNom Notes | SG Foodie Map & Gallery</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', system-ui, 'Segoe UI', sans-serif; }
+
+        /* ── AUTH SCREEN ── */
+        #authScreen {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: rgba(30, 15, 5, 0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        #authScreen.visible { display: flex; }
+        .auth-modal-close {
+            position: absolute;
+            top: 16px; right: 16px;
+            background: #faf3ec;
+            border: 1px solid #ddd0c0;
+            color: #7b4f2e;
+            border-radius: 50%;
+            width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: 0.15s;
+            font-family: inherit;
+        }
+        .auth-modal-close:hover { background: #4a2c17; color: white; border-color: #4a2c17; }
+        .auth-card {
+            background: #ffffffee;
+            backdrop-filter: blur(16px);
+            border-radius: 36px;
+            padding: 40px 36px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 24px 60px rgba(74,44,23,0.12);
+            border: 1.5px solid #ddd0c0;
+            animation: authFadeIn 0.4s ease;
+        }
+        @keyframes authFadeIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+        .auth-logo { text-align: center; margin-bottom: 28px; }
+        .auth-logo .logo-icon { font-size: 2.8rem; display: block; margin-bottom: 6px; }
+        .auth-logo h1 { font-size: 1.9rem; font-weight: 800; background: linear-gradient(115deg, #3d1f0d, #6b3e22); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .auth-logo p { font-size: 0.82rem; color: #8a7060; margin-top: 4px; font-weight: 500; }
+        .auth-tabs { display: flex; background: #faf3ec; border-radius: 50px; padding: 4px; margin-bottom: 28px; border: 1px solid #ddd0c0; }
+        .auth-tab { flex: 1; padding: 10px; border: none; background: transparent; border-radius: 46px; font-weight: 700; font-size: 0.88rem; cursor: pointer; color: #8a7060; transition: 0.2s; font-family: inherit; }
+        .auth-tab.active { background: #4a2c17; color: white; box-shadow: 0 4px 12px rgba(74,44,23,0.35); }
+        .auth-form { display: none; flex-direction: column; gap: 16px; }
+        .auth-form.visible { display: flex; }
+        .auth-field { position: relative; }
+        .auth-field label { display: block; font-size: 0.8rem; font-weight: 700; color: #7b4f2e; margin-bottom: 6px; }
+        .auth-field input { width: 100%; padding: 13px 48px 13px 16px; border: 1.5px solid #ddd0c0; border-radius: 16px; font-size: 0.95rem; background: #fdfcf8; color: #3a2218; transition: 0.2s; outline: none; font-family: inherit; }
+        .auth-field input:focus { border-color: #4a2c17; box-shadow: 0 0 0 3px rgba(74,44,23,0.12); }
+        .pw-toggle { position: absolute; right: 14px; bottom: 13px; background: none; border: none; cursor: pointer; color: #8a7868; font-size: 1rem; padding: 2px; line-height: 1; }
+        .pw-toggle:hover { color: #4a2c17; }
+        .auth-msg { padding: 11px 16px; border-radius: 14px; font-size: 0.82rem; font-weight: 600; display: none; align-items: center; gap: 8px; line-height: 1.4; }
+        .auth-msg.error { background: #fff0ee; color: #c0392b; border: 1px solid #ffc8c4; display: flex; }
+        .auth-msg.success { background: #f0fff4; color: #1a8a4a; border: 1px solid #b8f0cc; display: flex; }
+        .auth-btn { background: linear-gradient(105deg, #4a2c17, #7b4f2e); border: none; color: white; font-weight: 700; padding: 14px; border-radius: 50px; font-size: 1rem; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; font-family: inherit; width: 100%; }
+        .auth-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(74,44,23,0.4); }
+        .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        /* ── LOADING ── */
+        #loadingOverlay { display: none; }
+        .load-icon { font-size: 3rem; animation: loadSpin 1s linear infinite; }
+        @keyframes loadSpin { to { transform: rotate(360deg); } }
+        #loadingOverlay p { font-size: 1rem; color: #8a7060; font-weight: 600; }
+
+        /* ── MAIN APP ── */
+        #appScreen {
+            display: block;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #faf6f1 0%, #f0e4d8 40%, #e8d8cc 100%);
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .sparkle { position: fixed; pointer-events: none; font-size: 1.4rem; opacity: 0.4; z-index: 0; animation: floatSparkle 8s infinite alternate; }
+        @keyframes floatSparkle { 0% { transform: translateY(0) rotate(0deg); opacity: 0.2; } 100% { transform: translateY(-25px) rotate(8deg); opacity: 0.6; } }
+        .sparkle-1 { top: 12%; left: 5%; } .sparkle-2 { bottom: 15%; right: 3%; font-size: 2rem; }
+        .sparkle-3 { top: 30%; right: 8%; } .sparkle-4 { bottom: 25%; left: 8%; } .sparkle-5 { top: 60%; left: 15%; }
+
+        .top-bar { max-width: 1500px; margin: 0 auto 14px auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; position: relative; z-index: 20; }
+        .view-toggle-bar { background: rgba(255,250,245,0.92); backdrop-filter: blur(12px); border-radius: 80px; padding: 8px 20px; display: flex; gap: 16px; box-shadow: 0 6px 14px rgba(0,0,0,0.08); border: 1px solid #ede4d8; }
+        .view-btn { background: transparent; border: none; padding: 8px 24px; border-radius: 40px; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: 0.2s; color: #7b4f2e; display: flex; align-items: center; gap: 8px; font-family: inherit; }
+        .view-btn.active { background: #4a2c17; color: white; box-shadow: 0 4px 10px rgba(74,44,23,0.3); }
+        .user-bar { background: rgba(255,250,245,0.92); backdrop-filter: blur(12px); border-radius: 50px; padding: 8px 18px; display: flex; align-items: center; gap: 12px; border: 1px solid #ede4d8; box-shadow: 0 4px 12px rgba(0,0,0,0.07); }
+        .user-email { font-size: 0.8rem; font-weight: 600; color: #7b4f2e; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .logout-btn { background: #faf3ec; border: 1px solid #d4c4b0; color: #7b4f2e; padding: 6px 14px; border-radius: 40px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.15s; font-family: inherit; }
+        .logout-btn:hover { background: #4a2c17; color: white; border-color: #4a2c17; }
+
+        .dashboard { max-width: 1500px; margin: 0 auto; display: flex; position: relative; z-index: 2; background: #f0e8de; border-radius: 48px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06); border: 2px solid #f0e4d8; }
+        .left-panel { background: rgba(255,251,247,0.98); backdrop-filter: blur(8px); overflow-y: auto; padding: 30px 28px; transition: flex 0.1s ease-out; height: calc(100vh - 130px); display: flex; flex-direction: column; gap: 24px; box-shadow: 2px 0 16px rgba(0,0,0,0.04); }
+        .form-card-wrapper { transition: all 0.2s; }
+        .form-card { background: #ffffff; backdrop-filter: blur(4px); border-radius: 32px; padding: 28px 26px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #f0e8e0; }
+        .form-card h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 22px; color: #2e1a0e; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px; }
+        .filter-section { background: #faf6f1; border-radius: 32px; padding: 18px; border: 1px solid #ddd0c0; }
+        .food-type-filter { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+        .filter-chip { background: #faf3ec; padding: 6px 18px; border-radius: 50px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid #d4c4b0; color: #7b4f2e; font-family: inherit; }
+        .filter-chip.active { background: #4a2c17; color: white; border-color: #4a2c17; }
+        .sorting-bar { background: #faf6f1; border-radius: 32px; padding: 12px 18px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; border: 1px solid #ddd0c0; }
+        .sort-label { font-weight: 600; color: #7b4f2e; font-size: 0.85rem; }
+        .sort-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        .sort-btn { background: #faf3ec; border: 1px solid #d4c4b0; padding: 6px 16px; border-radius: 40px; font-size: 0.75rem; font-weight: 600; cursor: pointer; color: #7b4f2e; transition: 0.1s; font-family: inherit; }
+        .sort-btn.active { background: #4a2c17; color: white; border-color: #4a2c17; }
+        .stats-summary { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { flex: 1; min-width: 180px; background: linear-gradient(135deg, #faf3eb, #f0e4d8); border-radius: 28px; padding: 16px 20px; border: 1px solid #ddd0c0; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+        .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: #7b5030; margin-bottom: 8px; }
+        .stat-value { font-size: 1.5rem; font-weight: 800; color: #5e3a28; }
+        .stat-store { font-size: 0.85rem; color: #7b5030; margin-top: 6px; font-weight: 500; word-break: break-word; }
+        .stores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 12px; }
+        .store-card { background: #ffffff; border-radius: 28px; padding: 18px; border-left: 8px solid #9b6b45; box-shadow: 0 8px 18px rgba(0,0,0,0.06); transition: all 0.2s ease; cursor: pointer; display: flex; flex-direction: column; height: 100%; }
+        .store-card:hover { transform: translateY(-4px); box-shadow: 0 14px 26px rgba(0,0,0,0.12); background: #fffaf5; }
+        .store-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .store-name { font-weight: 800; font-size: 1.15rem; color: #5e3a28; }
+        .store-final-score { background: #f0e4d4; color: #7b4428; padding: 4px 12px; border-radius: 50px; font-size: 0.75rem; font-weight: 800; }
+        .ratings-breakdown { font-size: 0.7rem; margin: 8px 0; display: flex; gap: 12px; color: #7b5030; flex-wrap: wrap; }
+        .store-details { font-size: 0.75rem; margin-top: 6px; color: #5a3e2a; word-break: break-word; }
+        .store-comment { font-style: italic; font-size: 0.7rem; background: #faf3ec; padding: 8px 12px; border-radius: 24px; margin-top: 12px; }
+        .action-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+        .edit-btn, .delete-btn { background: #f3efe9; border: none; padding: 5px 14px; border-radius: 40px; font-weight: 600; cursor: pointer; font-size: 0.7rem; font-family: inherit; }
+        .edit-btn { color: #7b4f2e; } .delete-btn { color: #8a4a2e; }
+        .empty-msg { text-align: center; padding: 40px 20px; background: #faf6f0; border-radius: 48px; color: #9b7a5a; grid-column: 1 / -1; }
+        .right-panel { background: #e8ddd4; position: relative; overflow: hidden; height: calc(100vh - 130px); } .right-panel::after { content: ""; position: absolute; inset: 0; background: rgba(20,10,5,0.18); z-index: 2; pointer-events: none; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        .resize-handle { width: 8px; background: #e9dacf; cursor: col-resize; position: relative; transition: background 0.1s; z-index: 15; }
+        .resize-handle:hover, .resize-handle.dragging { background: #4a2c17; }
+        .resize-handle::after { content: "⋮"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #b68b6b; font-weight: bold; font-size: 1.2rem; }
+        .mode-hidden { display: none !important; }
+        .input-group { margin-bottom: 20px; position: relative; }
+        label { font-weight: 700; display: block; margin-bottom: 6px; font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+        input, textarea, select { width: 100%; padding: 13px 16px; border: 1.5px solid #e8ddd5; border-radius: 14px; font-size: 0.9rem; background: #fdfcfb; transition: 0.2s; font-family: inherit; color: #2e1a0e; }
+        .branch-select { border-radius: 20px; padding: 10px 12px; font-size: 0.85rem; line-height: 1.4; max-height: 200px; overflow-y: auto; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #4a2c17; box-shadow: 0 0 0 3px rgba(74,44,23,0.12); background: #fffefb; }
+        .rating-row { display: flex; gap: 16px; flex-wrap: wrap; }
+        .rating-row .input-group { flex: 1; }
+        .btn-primary { background: linear-gradient(105deg, #4a2c17, #7b4f2e); border: none; color: white; font-weight: 700; padding: 12px; border-radius: 60px; width: 100%; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: inherit; }
+        .suggestions-dropdown { position: fixed; background: white; border-radius: 20px; box-shadow: 0 12px 28px rgba(0,0,0,0.15); max-height: 280px; overflow-y: auto; z-index: 9999; display: none; }
+        #storeNameSelect { position: static !important; box-shadow: none !important; width: 100% !important; border: 1.5px solid #e8ddd5; border-radius: 14px; background: #fdfcfb; max-height: 200px; overflow-y: auto; margin-top: 4px; z-index: auto !important; }
+        #storeNameSelect .suggestion-item { padding: 10px 14px; font-size: 0.88rem; }
+        #storeNameSelect .suggestion-name { font-weight: 600; color: #333; }
+        #storeNameSelect .suggestion-address { font-size: 0.78rem; color: #888; margin-top: 2px; }
+        #storeNameSelect .no-results { padding: 10px 14px; font-size: 0.85rem; color: #aaa; font-style: italic; }
+        .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f0e4d8; }
+        .suggestion-name { font-weight: 600; font-size: 0.9rem; color: #5e3a28; }
+        .suggestion-address { font-size: 0.75rem; color: #8a7060; margin-top: 2px; }
+        .suggestion-item:hover, .suggestion-item.touch-active { background: #faf3ec; }
+        .suggestion-no-results { padding: 14px 16px; font-size: 0.85rem; color: #8a7060; font-style: italic; }
+        .branch-hint { font-size: 0.72rem; color: #9ca3af; margin-top: 6px; min-height: 18px; transition: 0.2s; }
+        .branch-hint.loading { color: #7b5030; }
+        .branch-hint.success { color: #2a8a4a; }
+        .branch-hint.warn { color: #c08030; }
+        /* Selected branch pill shown in address field area */
+        .selected-branch-pill {
+            display: none; align-items: center; gap: 8px; background: #faf3ec;
+            border: 1.5px solid #cfc0ad; border-radius: 14px; padding: 8px 14px;
+            margin-top: 8px; font-size: 0.82rem; color: #5c3519; font-weight: 600;
+        }
+        .selected-branch-pill.visible { display: flex; }
+        .selected-branch-pill .pill-addr { flex: 1; word-break: break-word; }
+        .selected-branch-pill .pill-clear { background: none; border: none; cursor: pointer; color: #7b4f2e; font-size: 0.85rem; padding: 0 2px; flex-shrink: 0; }
+        .selected-branch-pill .pill-clear:hover { color: #4a2c17; }
+        /* Address search dropdown (for branch field) */
+        #addressSuggestions { position: fixed; background: white; border-radius: 20px; box-shadow: 0 12px 28px rgba(0,0,0,0.15); max-height: 240px; overflow-y: auto; z-index: 9999; display: none; }
+        #addressSuggestions .suggestion-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f0e4d8; }
+        #addressSuggestions .suggestion-item:hover, #addressSuggestions .suggestion-item.touch-active { background: #faf3ec; }
+        .mobile-add-fab { display: none; position: fixed; bottom: 22px; right: 18px; z-index: 999; background: linear-gradient(135deg, #4a2c17, #7b4f2e); color: white; border: none; border-radius: 50px; padding: 14px 22px; font-size: 1rem; font-weight: 700; box-shadow: 0 8px 24px rgba(74,44,23,0.4); cursor: pointer; align-items: center; gap: 8px; font-family: inherit; }
+
+        @media (max-width: 700px) {
+            #appScreen.visible { padding: 8px; }
+            .sparkle { display: none; }
+            .top-bar { flex-direction: column; align-items: stretch; gap: 8px; margin-bottom: 10px; }
+            .view-toggle-bar { padding: 6px 10px; gap: 6px; width: 100%; justify-content: center; border-radius: 40px; }
+            .view-btn { padding: 8px 12px; font-size: 0.78rem; gap: 5px; }
+            .user-bar { justify-content: space-between; border-radius: 20px; padding: 10px 16px; }
+            .user-email { font-size: 0.75rem; }
+            .dashboard { border-radius: 24px; flex-direction: column; height: auto; }
+            .left-panel { height: auto; padding: 16px 14px; gap: 18px; }
+            .right-panel { height: 52vw; min-height: 200px; max-height: 320px; }
+            .form-card { border-radius: 24px; padding: 18px 14px; }
+            .form-card h2 { font-size: 1.35rem; margin-bottom: 14px; }
+            .stores-grid { grid-template-columns: 1fr; }
+            .stats-summary { flex-direction: column; }
+            input, textarea, select { font-size: 1rem !important; padding: 13px 14px; border-radius: 16px; }
+            .suggestions-dropdown { border-radius: 16px; max-height: 240px; z-index: 9999; }
+            .suggestion-item { padding: 14px 16px; min-height: 54px; display: flex; flex-direction: column; justify-content: center; }
+            .btn-primary { padding: 15px; font-size: 1rem; border-radius: 50px; }
+            .filter-chip { padding: 8px 16px; font-size: 0.8rem; min-height: 38px; }
+            .sort-btn { padding: 8px 14px; font-size: 0.78rem; }
+            .resize-handle { display: none !important; }
+            .store-card { border-radius: 20px; }
+            .mobile-add-fab { display: flex !important; }
+            .edit-btn, .delete-btn { padding: 8px 16px; font-size: 0.8rem; min-height: 36px; }
+            .rating-row { flex-direction: column; gap: 0; }
+            .auth-card { padding: 28px 20px; border-radius: 28px; }
+            .auth-logo h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingOverlay">
+    <div class="load-icon">🍳</div>
+    <p>Loading NomNom Notes...</p>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+    <div class="auth-card" style="position:relative;">
+        <button class="auth-modal-close" onclick="closeAuthModal()" title="Close"><i class="fas fa-times"></i></button>
+        <div class="auth-logo">
+            <span class="logo-icon">🍜</span>
+            <h1>NomNom Notes</h1>
+            <p>Your personal SG foodie map</p>
+        </div>
+        <div class="auth-tabs">
+            <button class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+            <button class="auth-tab" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+        <!-- LOGIN -->
+        <div class="auth-form visible" id="loginForm">
+            <div class="auth-field">
+                <label><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="loginEmail" placeholder="you@email.com" autocomplete="off">
+            </div>
+            <div class="auth-field">
+                <label><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="loginPassword" placeholder="Your password" autocomplete="new-password">
+                <button class="pw-toggle" type="button" onclick="togglePw('loginPassword',this)" tabindex="-1"><i class="fas fa-eye"></i></button>
+            </div>
+            <div class="auth-msg" id="loginMsg"></div>
+            <button class="auth-btn" id="loginBtn" onclick="handleLogin()"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+        </div>
+        <!-- SIGNUP -->
+        <div class="auth-form" id="signupForm">
+            <div class="auth-field">
+                <label><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="signupEmail" placeholder="you@email.com" autocomplete="off">
+            </div>
+            <div class="auth-field">
+                <label><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="signupPassword" placeholder="At least 6 characters" autocomplete="new-password">
+                <button class="pw-toggle" type="button" onclick="togglePw('signupPassword',this)" tabindex="-1"><i class="fas fa-eye"></i></button>
+            </div>
+            <div class="auth-field">
+                <label><i class="fas fa-lock"></i> Confirm Password</label>
+                <input type="password" id="signupConfirm" placeholder="Repeat your password" autocomplete="new-password">
+                <button class="pw-toggle" type="button" onclick="togglePw('signupConfirm',this)" tabindex="-1"><i class="fas fa-eye"></i></button>
+            </div>
+            <div class="auth-msg" id="signupMsg"></div>
+            <button class="auth-btn" id="signupBtn" onclick="handleSignup()"><i class="fas fa-user-plus"></i> Create Account</button>
+        </div>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="visible">
+    <div class="sparkle sparkle-1">✨</div>
+    <div class="sparkle sparkle-2">🌟</div>
+    <div class="sparkle sparkle-3">⭐</div>
+    <div class="sparkle sparkle-4">🍜</div>
+    <div class="sparkle sparkle-5">🍚</div>
+    <button class="mobile-add-fab" id="mobileAddFab"><i class="fas fa-plus"></i> Add Spot</button>
+    <div class="top-bar">
+        <div class="view-toggle-bar">
+            <button class="view-btn" data-view="split"><i class="fas fa-columns"></i> Split</button>
+            <button class="view-btn" data-view="map"><i class="fas fa-map"></i> Map</button>
+            <button class="view-btn" data-view="list"><i class="fas fa-th-large"></i> List</button>
+        </div>
+        <!-- shown when logged OUT -->
+        <div class="user-bar" id="userBarGuest">
+            <i class="fas fa-circle-user" style="color:#8a7868;font-size:1.1rem;"></i>
+            <span class="user-email" style="color:#8a7868;">Guest mode</span>
+            <button class="logout-btn" style="background:#4a2c17;color:white;border-color:#4a2c17;" onclick="openAuthModal()">
+                <i class="fas fa-sign-in-alt"></i> Login / Sign Up
+            </button>
+        </div>
+        <!-- shown when logged IN -->
+        <div class="user-bar" id="userBarLoggedIn" style="display:none;">
+            <i class="fas fa-circle-user" style="color:#4a2c17;font-size:1.1rem;"></i>
+            <span class="user-email" id="userEmailDisplay">—</span>
+            <button class="logout-btn" onclick="handleLogout()"><i class="fas fa-right-from-bracket"></i> Logout</button>
+        </div>
+    </div>
+    <div class="dashboard" id="dashboardContainer">
+        <div class="left-panel" id="leftPanel">
+            <div class="form-card-wrapper" id="formCardWrapper">
+                <div class="form-card">
+                    <h2><i class="fas fa-egg"></i> NomNom Notes</h2>
+                    <div class="input-group">
+                        <label><i class="fas fa-store"></i> Store Name</label>
+                        <input type="text" id="storeNameInput" placeholder="Search or type store name (SG)" autocomplete="off">
+                        <div id="storeNameSelect" class="suggestions-dropdown" style="display:none;"></div>
+                        <div class="branch-hint" style="margin-top:6px;"><i class="fas fa-pen"></i> Pick a suggestion or type the name yourself.</div>
+                    </div>
+                    <div class="input-group">
+                        <label><i class="fas fa-map-pin"></i> Branch / exact location</label>
+                        <!-- Branch dropdown from Google search -->
+                        <select id="branchSelect" style="display:none;" class="branch-select" size="1"></select>
+                        <!-- Selected branch pill — shows clearly after picking -->
+                        <div class="selected-branch-pill" id="selectedBranchPill">
+                            <i class="fas fa-location-dot" style="color:#4a2c17;flex-shrink:0;"></i>
+                            <span class="pill-addr" id="pillAddrText"></span>
+                            <button class="pill-clear" onclick="clearBranchSelection()" title="Change branch"><i class="fas fa-times-circle"></i></button>
+                        </div>
+                        <!-- Manual address fallback — always available -->
+                        <div id="manualAddrWrapper" style="position:relative;">
+                            <input type="text" id="manualAddress" placeholder="Or type address here — map updates live" autocomplete="off">
+                            <div id="addressSuggestions"></div>
+                        </div>
+                        <div class="branch-hint" id="branchHint"><i class="fas fa-magic"></i> Pick a store name above to load all branches, or type an address manually.</div>
+                    </div>
+                    <div class="input-group">
+                        <label><i class="fas fa-tag"></i> Food Category</label>
+                        <input type="text" id="foodType" placeholder="e.g., Chicken Rice, Laksa, Ramen">
+                    </div>
+                    <div class="rating-row">
+                        <div class="input-group"><label><i class="fas fa-heart" style="color:#4a2c17;"></i> Score (0-100)</label><input type="number" id="sawaRating" min="0" max="100" step="1" placeholder="Sawa's score"></div>
+                        <div class="input-group"><label><i class="fas fa-heart" style="color:#4a2c17;"></i> Score (0-100)</label><input type="number" id="kaedenRating" min="0" max="100" step="1" placeholder="Kaeden's score"></div>
+                    </div>
+                    <div class="input-group"><label><i class="fas fa-comment-dots"></i> Memories / Notes</label><textarea id="commentsTxt" rows="2" placeholder="What did we order? Will we come back?"></textarea></div>
+                    <input type="hidden" id="selectedPlaceId"><input type="hidden" id="selectedLat"><input type="hidden" id="selectedLng"><input type="hidden" id="selectedAddress">
+                    <div style="display:flex;gap:12px;">
+                        <button class="btn-primary" id="saveStoreBtn"><i class="fas fa-save"></i> Save yummy spot</button>
+                        <button class="btn-primary" id="cancelEditBtn" style="background:#bba88a;display:none;"><i class="fas fa-undo-alt"></i> Cancel</button>
+                    </div>
+                </div>
+            </div>
+            <div id="listViewExtras" style="display:none;">
+                <div class="stats-summary">
+                    <div class="stat-card"><div class="stat-label"><i class="fas fa-crown"></i> Highest Rated</div><div class="stat-value" id="highestScore">—</div><div class="stat-store" id="highestStore">—</div></div>
+                    <div class="stat-card"><div class="stat-label"><i class="fas fa-seedling"></i> Lowest Rated</div><div class="stat-value" id="lowestScore">—</div><div class="stat-store" id="lowestStore">—</div></div>
+                </div>
+                <div class="sorting-bar">
+                    <span class="sort-label"><i class="fas fa-sort"></i> Sort by:</span>
+                    <div class="sort-buttons">
+                        <button class="sort-btn" data-sort="az">A → Z</button>
+                        <button class="sort-btn" data-sort="highest">⭐ Highest</button>
+                        <button class="sort-btn" data-sort="lowest">⬇️ Lowest</button>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-section"><h3><i class="fas fa-filter"></i> Filter by food type</h3><div class="food-type-filter" id="filterChipsContainer"><button class="filter-chip active" data-filter="ALL">🍽️ All eats</button></div></div>
+            <div class="stores-grid" id="storesGridContainer"><div class="empty-msg"><i class="fas fa-map-marked-alt"></i> No food memories yet. Add your first!</div></div>
+        </div>
+        <div class="resize-handle" id="resizeHandle"></div>
+        <div class="right-panel" id="rightPanel"><div id="map"></div></div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  SUPABASE INIT
+// ═══════════════════════════════════════════════
+const SUPABASE_URL = 'https://lagrcsiohqlepywjaafd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZ3Jjc2lvaHFsZXB5d2phYWZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzU3NTMsImV4cCI6MjA5MDc1MTc1M30.3H581X0HUhTcLUi3IYdyfaEsYd6FmNTwuqLYks8GpqQ';
+const { createClient } = window.supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
+// ═══════════════════════════════════════════════
+//  AUTH FUNCTIONS
+// ═══════════════════════════════════════════════
+function switchTab(tab) {
+    document.getElementById('loginForm').classList.toggle('visible', tab === 'login');
+    document.getElementById('signupForm').classList.toggle('visible', tab === 'signup');
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabSignup').classList.toggle('active', tab === 'signup');
+    clearAuthMsgs();
+}
+function togglePw(id, btn) {
+    const inp = document.getElementById(id);
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    btn.innerHTML = inp.type === 'text' ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+}
+function showMsg(elId, msg, type) {
+    const el = document.getElementById(elId);
+    el.textContent = msg; el.className = 'auth-msg ' + type;
+}
+function clearAuthMsgs() {
+    ['loginMsg','signupMsg'].forEach(id => { const el = document.getElementById(id); el.className = 'auth-msg'; el.textContent = ''; });
+}
+async function handleLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    clearAuthMsgs();
+    if (!email || !password) { showMsg('loginMsg', 'Please fill in both fields.', 'error'); return; }
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Signing in...';
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+    if (error) {
+        const msg = error.message.toLowerCase().includes('not confirmed')
+            ? '📧 Please confirm your email first — check your inbox!'
+            : error.message;
+        showMsg('loginMsg', msg, 'error');
+    }
+}
+async function handleSignup() {
+    const email = document.getElementById('signupEmail').value.trim();
+    const password = document.getElementById('signupPassword').value;
+    const confirm = document.getElementById('signupConfirm').value;
+    clearAuthMsgs();
+    if (!email || !password || !confirm) { showMsg('signupMsg', 'Please fill in all fields.', 'error'); return; }
+    if (password.length < 6) { showMsg('signupMsg', 'Password must be at least 6 characters.', 'error'); return; }
+    if (password !== confirm) { showMsg('signupMsg', 'Passwords do not match.', 'error'); return; }
+    const btn = document.getElementById('signupBtn');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Creating account...';
+    const { data, error } = await sb.auth.signUp({ email, password });
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+    if (error) { showMsg('signupMsg', error.message, 'error'); return; }
+    if (data.session) {
+        // Email confirmation disabled — user is instantly logged in (onAuthStateChange handles it)
+    } else {
+        // Email confirmation required
+        showMsg('signupMsg', '✅ Account created! Check your email to confirm, then sign in.', 'success');
+        setTimeout(() => switchTab('login'), 2500);
+    }
+}
+async function handleLogout() {
+    try { await sb.auth.signOut(); } catch(e) { console.warn('signOut error:', e); }
+    // Force-clear any persisted Supabase tokens so extensions can't block it
+    Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
+    currentUser = null;
+    stores = [];
+    updateUI();
+    showScreen('auth');
+    openAuthModal();
+}
+
+// ═══════════════════════════════════════════════
+//  SESSION ROUTING
+// ═══════════════════════════════════════════════
+function openAuthModal() { document.getElementById('authScreen').classList.add('visible'); }
+function closeAuthModal() { document.getElementById('authScreen').classList.remove('visible'); clearAuthMsgs(); }
+function showScreen(screen) {
+    if (screen === 'auth') {
+        document.getElementById('userBarGuest').style.display = 'flex';
+        document.getElementById('userBarLoggedIn').style.display = 'none';
+    } else {
+        document.getElementById('userBarGuest').style.display = 'none';
+        document.getElementById('userBarLoggedIn').style.display = 'flex';
+        closeAuthModal();
+    }
+}
+sb.auth.onAuthStateChange(async (event, session) => {
+    if (session && session.user) {
+        currentUser = session.user;
+        document.getElementById('userEmailDisplay').textContent = currentUser.email;
+        showScreen('app');
+        await loadStoresFromDB();
+        updateUI();
+    } else {
+        currentUser = null; stores = [];
+        updateUI(); showScreen('auth');
+    }
+});
+async function initAuth() {
+    // Check for existing session — stay logged in across refreshes
+    const { data: { session } } = await sb.auth.getSession();
+    if (session && session.user) {
+        currentUser = session.user;
+        document.getElementById('userEmailDisplay').textContent = currentUser.email;
+        showScreen('app');
+        await loadStoresFromDB();
+        updateUI();
+    } else {
+        currentUser = null; stores = [];
+        showScreen('auth');
+        openAuthModal();
+    }
+}
+
+// ═══════════════════════════════════════════════
+//  SUPABASE DATA
+// ═══════════════════════════════════════════════
+async function loadStoresFromDB() {
+    if (!currentUser) return;
+    const { data, error } = await sb.from('food_entries').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    if (error) { console.error('Load error:', error.message); return; }
+    stores = (data || []).map(r => ({ id: r.id, name: r.name, address: r.address, foodType: r.food_type, sawaRating: r.sawa_rating, kaedenRating: r.kaeden_rating, finalScore: r.final_score, comment: r.comment, lat: r.lat, lng: r.lng }));
+    console.log('Loaded', stores.length, 'entries from Supabase');
+    updateUI();
+}
+async function saveStoreToDB(d) {
+    try {
+        const { data, error } = await sb.from('food_entries').insert([{ user_id: currentUser.id, name: d.name, address: d.address, food_type: d.foodType, sawa_rating: d.sawaRating, kaeden_rating: d.kaedenRating, final_score: d.finalScore, comment: d.comment, lat: d.lat, lng: d.lng }]).select().single();
+        if (error) { alert('Save failed: ' + error.message); return null; }
+        return data.id;
+    } catch(e) {
+        alert('Save failed — network error: ' + e.message + '\n\nMake sure no browser extension is blocking requests.');
+        return null;
+    }
+}
+async function updateStoreInDB(id, d) {
+    const { error } = await sb.from('food_entries').update({ name: d.name, address: d.address, food_type: d.foodType, sawa_rating: d.sawaRating, kaeden_rating: d.kaedenRating, final_score: d.finalScore, comment: d.comment, lat: d.lat, lng: d.lng }).eq('id', id).eq('user_id', currentUser.id);
+    if (error) alert('Update failed: ' + error.message);
+}
+async function deleteStoreFromDB(id) {
+    const { error } = await sb.from('food_entries').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) alert('Delete failed: ' + error.message);
+}
+
+// ═══════════════════════════════════════════════
+//  APP STATE (vars only — no DOM access here)
+// ═══════════════════════════════════════════════
+let stores = [], map, markersLayer = {}, editMode = false, editingStoreId = null;
+let currentSelectedStore = null, currentBranchResults = [];
+let previewMarker = null;
+let currentView = 'split', currentSort = 'az', splitLeftWidth = 480;
+const minLeft = 320, minRight = 280;
+let isDragging = false;
+// DOM refs — set in initApp() after DOMContentLoaded
+let leftPanel, rightPanel, handle, dashboardDiv, formCardWrapper, listViewExtras;
+let storeInput, suggestionsDiv, manualAddrInput, addrSugDiv;
+let acDebounce = null, addrDebounce = null;
+
+// ═══════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════
+function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+function setHint(id, msg, cls) { const el = document.getElementById(id); if (!el) return; el.innerHTML = msg; el.className = 'branch-hint' + (cls ? ' ' + cls : ''); }
+function validateRating(v) { const n = parseInt(v); if (isNaN(n)) return null; return Math.min(100, Math.max(0, n)); }
+function findStoreById(raw) { return stores.find(s => String(s.id) === String(raw)); }
+function getSortedStores(arr) {
+    const s = [...arr];
+    if (currentSort === 'az') s.sort((a, b) => a.name.localeCompare(b.name));
+    else if (currentSort === 'highest') s.sort((a, b) => b.finalScore - a.finalScore);
+    else if (currentSort === 'lowest') s.sort((a, b) => a.finalScore - b.finalScore);
+    return s;
+}
+
+// ═══════════════════════════════════════════════
+//  MAP
+// ═══════════════════════════════════════════════
+function initMap() {
+    map = L.map('map').setView([1.3521, 103.8198], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM & CartoDB', maxZoom: 19 }).addTo(map);
+    setTimeout(() => map.invalidateSize(), 300);
+}
+function setMapPreview(lat, lng) {
+    if (!map || lat == null || lng == null || isNaN(+lat) || isNaN(+lng)) return;
+    if (previewMarker) { try { map.removeLayer(previewMarker); } catch(e) {} previewMarker = null; }
+    previewMarker = L.circleMarker([+lat, +lng], { radius: 11, color: '#4a2c17', fillColor: '#7b4f2e', fillOpacity: 0.9, weight: 2 }).addTo(map);
+    map.setView([+lat, +lng], 15);
+}
+function clearMapPreview() {
+    if (previewMarker && map) { try { map.removeLayer(previewMarker); } catch(e) {} }
+    previewMarker = null;
+}
+function rebuildMarkers() {
+    for (const id in markersLayer) try { map.removeLayer(markersLayer[id]); } catch(e) {}
+    markersLayer = {};
+    stores.forEach(s => {
+        if (s.lat && s.lng) {
+            const m = L.marker([s.lat, s.lng]).addTo(map).bindPopup(`<div><strong>${escapeHtml(s.name)}</strong><br>📍 ${escapeHtml(s.address)}<br>🍱 ${escapeHtml(s.foodType)}<br>⭐ ${s.finalScore.toFixed(1)}</div>`);
+            markersLayer[s.id] = m;
+        }
+    });
+}
+
+// ═══════════════════════════════════════════════
+//  VIEW MODES
+// ═══════════════════════════════════════════════
+function applyViewMode() {
+    const isSplit = currentView === 'split', isMap = currentView === 'map', isList = currentView === 'list';
+    if (isSplit) {
+        leftPanel.classList.remove('mode-hidden'); rightPanel.classList.remove('mode-hidden'); handle.classList.remove('mode-hidden');
+        dashboardDiv.style.flexDirection = 'row'; formCardWrapper.classList.remove('mode-hidden'); listViewExtras.style.display = 'none';
+        const w = Math.min(Math.max(parseInt(localStorage.getItem('nomnom_splitWidth') || splitLeftWidth), minLeft), dashboardDiv.clientWidth - minRight);
+        leftPanel.style.flex = `0 0 ${w}px`; rightPanel.style.flex = '1 1 auto';
+    } else if (isMap) {
+        leftPanel.classList.add('mode-hidden'); handle.classList.add('mode-hidden'); rightPanel.classList.remove('mode-hidden');
+        rightPanel.style.flex = '1'; leftPanel.style.flex = ''; listViewExtras.style.display = 'none';
+    } else {
+        leftPanel.classList.remove('mode-hidden'); rightPanel.classList.add('mode-hidden'); handle.classList.add('mode-hidden');
+        leftPanel.style.flex = '1'; rightPanel.style.flex = ''; formCardWrapper.classList.add('mode-hidden'); listViewExtras.style.display = 'block';
+    }
+    if (map && (isSplit || isMap)) setTimeout(() => map.invalidateSize(), 120);
+    document.querySelectorAll('.view-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.view === currentView));
+    refreshFiltersAndGrid();
+}
+function initResize() {
+    handle.addEventListener('mousedown', e => {
+        if (currentView !== 'split') return;
+        e.preventDefault(); isDragging = true;
+        const startX = e.clientX, startW = leftPanel.getBoundingClientRect().width;
+        document.body.style.cursor = 'col-resize'; handle.classList.add('dragging');
+        const mm = e => { if (!isDragging) return; const w = Math.min(Math.max(startW + (e.clientX - startX), minLeft), dashboardDiv.clientWidth - minRight); leftPanel.style.flex = `0 0 ${w}px`; rightPanel.style.flex = '1 1 auto'; localStorage.setItem('nomnom_splitWidth', w); if (map) map.invalidateSize(); };
+        const mu = () => { isDragging = false; document.body.style.cursor = ''; handle.classList.remove('dragging'); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
+        document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+    });
+}
+
+// ═══════════════════════════════════════════════
+//  STORE GRID / STATS
+// ═══════════════════════════════════════════════
+function updateStatsSummary() {
+    if (!stores.length) { ['highestScore','lowestScore'].forEach(id => document.getElementById(id).innerText = '—'); ['highestStore','lowestStore'].forEach(id => document.getElementById(id).innerText = 'No entries'); return; }
+    const hi = stores.reduce((m, s) => s.finalScore > m.finalScore ? s : m, stores[0]);
+    const lo = stores.reduce((m, s) => s.finalScore < m.finalScore ? s : m, stores[0]);
+    document.getElementById('highestScore').innerHTML = `⭐ ${hi.finalScore.toFixed(1)}`;
+    document.getElementById('highestStore').innerHTML = `<i class="fas fa-store"></i> ${escapeHtml(hi.name)}`;
+    document.getElementById('lowestScore').innerHTML = `⭐ ${lo.finalScore.toFixed(1)}`;
+    document.getElementById('lowestStore').innerHTML = `<i class="fas fa-store"></i> ${escapeHtml(lo.name)}`;
+}
+function renderStoreGrid(filter = 'ALL') {
+    const container = document.getElementById('storesGridContainer');
+    const filtered = filter === 'ALL' ? [...stores] : stores.filter(s => s.foodType === filter);
+    const sorted = getSortedStores(filtered);
+    if (!sorted.length) { container.innerHTML = `<div class="empty-msg"><i class="fas fa-egg"></i> No spots yet ✨ Add your first!</div>`; return; }
+    container.innerHTML = sorted.map(s => {
+        const avg = s.finalScore.toFixed(1);
+        return `<div class="store-card" data-id="${s.id}"><div class="store-header"><span class="store-name"><i class="fas fa-utensils"></i> ${escapeHtml(s.name)}</span><span class="store-final-score">⭐ ${avg}</span></div><div class="ratings-breakdown"><span>❤️ Sawa: ${s.sawaRating}</span><span>❤️ Kaeden: ${s.kaedenRating}</span><span>🏆 Avg: ${avg}</span></div><div class="store-details"><i class="fas fa-location-dot"></i> ${escapeHtml(s.address)}</div><div class="store-details"><i class="fas fa-tag"></i> ${escapeHtml(s.foodType)}</div>${s.comment ? `<div class="store-comment">📝 ${escapeHtml(s.comment)}</div>` : ''}<div class="action-buttons"><button type="button" class="edit-btn" data-id="${s.id}">✏️ Edit</button><button type="button" class="delete-btn" data-id="${s.id}">🗑️ Delete</button></div></div>`;
+    }).join('');
+    updateStatsSummary();
+}
+function refreshFiltersAndGrid() { const chip = document.querySelector('.filter-chip.active'); renderStoreGrid(chip ? chip.dataset.filter : 'ALL'); }
+function refreshFilters() {
+    const c = document.getElementById('filterChipsContainer');
+    const types = [...new Set(stores.map(s => s.foodType).filter(Boolean))];
+    c.innerHTML = `<button class="filter-chip active" data-filter="ALL">🍽️ All eats</button>` + types.map(t => `<button class="filter-chip" data-filter="${escapeHtml(t)}">🍜 ${escapeHtml(t)}</button>`).join('');
+    document.querySelectorAll('.filter-chip').forEach(btn => btn.addEventListener('click', () => { document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); btn.classList.add('active'); refreshFiltersAndGrid(); }));
+}
+function updateUI() { refreshFilters(); refreshFiltersAndGrid(); rebuildMarkers(); }
+
+// ═══════════════════════════════════════════════
+//  GEOCODING — Nominatim (OpenStreetMap)
+// ═══════════════════════════════════════════════
+async function geocodeAddress(address, storeName = '') {
+    if (!address && !storeName) return null;
+    const q = address || storeName;
+    // Primary: OneMap SG (Singapore Land Authority, free, no key)
+    try {
+        const r1 = await fetch(
+            `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${encodeURIComponent(q)}&returnGeom=Y&getAddrDetails=Y&pageNum=1`,
+            { signal: AbortSignal.timeout(8000) }
+        );
+        const d1 = await r1.json();
+        if (d1 && d1.results && d1.results.length) {
+            const top = d1.results[0];
+            if (top.LATITUDE && top.LONGITUDE)
+                return { lat: parseFloat(top.LATITUDE), lng: parseFloat(top.LONGITUDE), address: top.ADDRESS || q };
+        }
+    } catch(e) { console.warn('[OneMap geocode]', e); }
+    // Fallback: Nominatim (OpenStreetMap)
+    try {
+        const nq = /singapore/i.test(q) ? q : q + ', Singapore';
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(nq)}&format=json&limit=1&countrycodes=sg`,
+            { headers: { 'Accept-Language': 'en', 'User-Agent': 'NomNomNotes/1.0' }, signal: controller.signal }
+        );
+        clearTimeout(tid);
+        const data = await res.json();
+        if (data && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    } catch(e) { console.error('[Nominatim geocode]', e); }
+    return null;
+}
+
+// ═══════════════════════════════════════════════
+//  BRAND MATCHING
+// ═══════════════════════════════════════════════
+function normalizeBrandToken(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function matchesBrandPlace(placeName, brandName) {
+    const bn = normalizeBrandToken(brandName), pn = normalizeBrandToken(placeName);
+    if (!bn || !pn) return false;
+    if (pn === bn || pn.startsWith(bn) || pn.includes(bn)) return true;
+    const STOP = new Set(['cafe','restaurant','food','kitchen','the','and','at','sg','singapore','outlet','bar','grill','house','shop','bistro','by','de']);
+    const core = bn.split(' ').filter(w => w.length > 1 && !STOP.has(w));
+    return core.length ? core.every(w => pn.includes(w)) : pn.includes(bn);
+}
+
+// ═══════════════════════════════════════════════
+//  BRANCH PILL
+// ═══════════════════════════════════════════════
+function showBranchPill(address) {
+    document.getElementById('pillAddrText').textContent = address;
+    document.getElementById('selectedBranchPill').classList.add('visible');
+    document.getElementById('manualAddress').value = address;
+    document.getElementById('selectedAddress').value = address;
+    document.getElementById('branchSelect').style.display = 'none';
+}
+function clearBranchSelection() {
+    document.getElementById('selectedBranchPill').classList.remove('visible');
+    document.getElementById('pillAddrText').textContent = '';
+    document.getElementById('manualAddress').value = '';
+    document.getElementById('selectedAddress').value = '';
+    document.getElementById('selectedLat').value = '';
+    document.getElementById('selectedLng').value = '';
+    document.getElementById('selectedPlaceId').value = '';
+    clearMapPreview();
+    if (currentBranchResults && currentBranchResults.length) document.getElementById('branchSelect').style.display = 'block';
+    setHint('branchHint', '🔽 Pick a branch above, or type an address below.', '');
+}
+
+// ═══════════════════════════════════════════════
+//  AUTOCOMPLETE — Photon (OpenStreetMap / Komoot)
+// ═══════════════════════════════════════════════
+//  AUTOCOMPLETE — OneMap SG (primary) + Photon fallback
+// ═══════════════════════════════════════════════
+// Cache coords keyed by uid so selection never needs a second request.
+const _photonCache = new Map();
+
+function getStorePredictions(query, callback) {
+    // Primary: OneMap SG — covers all SG businesses, brands, malls, hawker centres
+    fetch(`https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${encodeURIComponent(query)}&returnGeom=Y&getAddrDetails=Y&pageNum=1`)
+        .then(r => r.json())
+        .then(data => {
+            const results = (data.results || []).filter(r => r.SEARCHVAL);
+            if (!results.length) {
+                // Fallback: Photon (OSM) if OneMap returns nothing
+                return fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&bbox=103.57,1.16,104.09,1.48&lang=en`)
+                    .then(r => r.json())
+                    .then(d => {
+                        const features = (d.features || []).filter(f => f.properties && f.properties.name);
+                        if (!features.length) { callback([], 'ZERO_RESULTS'); return; }
+                        callback(features.map((f, i) => {
+                            const uid = 'ph_s_' + Date.now() + '_' + i;
+                            const p = f.properties;
+                            const addr = [p.housenumber && p.street ? p.housenumber + ' ' + p.street : p.street, p.city || p.district || 'Singapore'].filter(Boolean).join(', ') || 'Singapore';
+                            _photonCache.set(uid, { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], address: addr });
+                            return { properties: { name: p.name || '', street: p.street || '', city: p.city || p.district || 'Singapore', place_id: uid } };
+                        }), 'OK');
+                    });
+            }
+            // Deduplicate by building/name for cleaner store suggestions
+            const seen = new Set();
+            const unique = results.filter(r => {
+                const key = (r.BUILDING && r.BUILDING !== 'NIL') ? r.BUILDING : r.SEARCHVAL;
+                if (seen.has(key)) return false;
+                seen.add(key); return true;
+            }).slice(0, 6);
+            callback(unique.map((r, i) => {
+                const uid = 'om_s_' + Date.now() + '_' + i;
+                const label = (r.BUILDING && r.BUILDING !== 'NIL') ? r.BUILDING : r.SEARCHVAL;
+                const addr = r.ADDRESS || [r.BLK_NO !== 'NIL' ? r.BLK_NO : '', r.ROAD_NAME].filter(Boolean).join(' ');
+                _photonCache.set(uid, { lat: parseFloat(r.LATITUDE), lng: parseFloat(r.LONGITUDE), address: r.ADDRESS || addr });
+                return { properties: { name: label, street: r.ROAD_NAME || '', city: r.POSTAL && r.POSTAL !== 'NIL' ? 'S(' + r.POSTAL + ')' : 'Singapore', place_id: uid } };
+            }), 'OK');
+        })
+        .catch(e => { console.error('[OneMap Store AC]', e); callback([], 'ERROR'); });
+}
+function getAddressPredictions(query, callback) {
+    // OneMap for address suggestions — best for SG streets, blocks, postcodes
+    fetch(`https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${encodeURIComponent(query)}&returnGeom=Y&getAddrDetails=Y&pageNum=1`)
+        .then(r => r.json())
+        .then(data => {
+            const results = (data.results || []).slice(0, 6);
+            if (!results.length) { callback([]); return; }
+            callback(results.map((r, i) => {
+                const uid = 'om_a_' + Date.now() + '_' + i;
+                _photonCache.set(uid, { lat: parseFloat(r.LATITUDE), lng: parseFloat(r.LONGITUDE), address: r.ADDRESS });
+                const name = r.ADDRESS || r.SEARCHVAL || query;
+                const secondary = r.POSTAL && r.POSTAL !== 'NIL' ? 'Singapore ' + r.POSTAL : 'Singapore';
+                return { place_id: uid, properties: { name, street: r.ROAD_NAME || '', city: secondary, postcode: r.POSTAL || '' } };
+            }));
+        })
+        .catch(e => { console.error('[OneMap Addr AC]', e); callback([]); });
+}
+function positionDropdown(dropdown, anchor) {
+    const r = anchor.getBoundingClientRect();
+    dropdown.style.top = (r.bottom + 4) + 'px';
+    dropdown.style.left = r.left + 'px';
+    dropdown.style.width = r.width + 'px';
+}
+function renderDropdown(container, items, onSelect) {
+    container.innerHTML = items.map(item => `<div class="suggestion-item" data-place-id="${item.placeId}"><div class="suggestion-name">${escapeHtml(item.name)}</div><div class="suggestion-address">${escapeHtml(item.secondary || '')}</div></div>`).join('');
+    container.style.display = 'block';
+    container.querySelectorAll('.suggestion-item').forEach(el => {
+        const act = () => onSelect(el.dataset.placeId, el.querySelector('.suggestion-name').innerText);
+        el.addEventListener('touchstart', () => el.classList.add('touch-active'), { passive: true });
+        el.addEventListener('touchend', e => { e.preventDefault(); el.classList.remove('touch-active'); act(); });
+        el.addEventListener('mousedown', e => { e.preventDefault(); act(); });
+    });
+}
+
+// ═══════════════════════════════════════════════
+//  FETCH ALL BRANCHES — Overpass API (OpenStreetMap)
+// ═══════════════════════════════════════════════
+async function fetchAllBranchesForBrand(brandName) {
+    const bn = brandName.trim(); if (!bn) return;
+    setHint('branchHint', `<i class="fas fa-spinner fa-pulse"></i> Finding all <strong>${escapeHtml(bn)}</strong> branches in Singapore…`, 'loading');
+    document.getElementById('branchSelect').style.display = 'none';
+    // SG bounding box: south,west,north,east
+    const escaped = bn.replace(/["\\]/g, '\\$&');
+    const query = `[out:json][timeout:20];(node["name"~"${escaped}",i](1.16,103.57,1.48,104.09);way["name"~"${escaped}",i](1.16,103.57,1.48,104.09);relation["name"~"${escaped}",i](1.16,103.57,1.48,104.09););out center;`;
+    try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+            method: 'POST',
+            body: 'data=' + encodeURIComponent(query)
+        });
+        const data = await res.json();
+        const elements = (data.elements || []);
+        const branches = elements
+            .map(el => {
+                const elLat = el.lat ?? el.center?.lat;
+                const elLng = el.lon ?? el.center?.lon;
+                if (!elLat || !elLng) return null;
+                const tags = el.tags || {};
+                const name = tags.name || bn;
+                const addrParts = [
+                    tags['addr:housenumber'] && tags['addr:street']
+                        ? tags['addr:housenumber'] + ' ' + tags['addr:street']
+                        : tags['addr:street'] || null,
+                    tags['addr:suburb'] || tags['addr:district'] || null,
+                    tags['addr:postcode'] ? 'Singapore ' + tags['addr:postcode'] : 'Singapore'
+                ].filter(Boolean);
+                const address = addrParts.join(', ') || (name + ', Singapore');
+                return { place_id: String(el.id), name, address, lat: elLat, lng: elLng };
+            })
+            .filter(Boolean);
+        branches.sort((a, b) => a.name.localeCompare(b.name));
+        currentBranchResults = branches;
+        if (!branches.length) {
+            // No OSM results — try OneMap SG instead
+            await fetchOneMapBranches(bn);
+            return;
+        } else {
+            setHint('branchHint', `<i class="fas fa-check-circle"></i> Found <strong>${branches.length} Singapore locations</strong> — pick one or type an address.`, 'success');
+            populateBranchDropdown(branches);
+        }
+    } catch(e) {
+        console.error('[Overpass]', e);
+        // Fallback: try OneMap SG
+        await fetchOneMapBranches(bn);
+    }
+}
+
+// ═══════════════════════════════════════════════
+//  BRANCH SEARCH — OneMap SG (used when OSM has no results)
+// ═══════════════════════════════════════════════
+async function fetchOneMapBranches(brandName) {
+    const bn = brandName.trim(); if (!bn) return;
+    try {
+        let allResults = [], page = 1, totalPages = 1;
+        do {
+            const r = await fetch(`https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${encodeURIComponent(bn)}&returnGeom=Y&getAddrDetails=Y&pageNum=${page}`);
+            const d = await r.json();
+            totalPages = d.totalNumPages || 1;
+            (d.results || []).forEach(item => {
+                if (!item.LATITUDE || !item.LONGITUDE) return;
+                const name = (item.BUILDING && item.BUILDING !== 'NIL') ? item.BUILDING : (item.SEARCHVAL || bn);
+                allResults.push({ place_id: 'om_b_' + item.POSTAL + '_' + page, name, address: item.ADDRESS || name + ', Singapore', lat: parseFloat(item.LATITUDE), lng: parseFloat(item.LONGITUDE) });
+            });
+            page++;
+        } while (page <= totalPages && page <= 3);
+        const filtered = allResults.filter(b => matchesBrandPlace(b.name, bn));
+        const final = (filtered.length ? filtered : allResults).slice(0, 25);
+        currentBranchResults = final;
+        if (!final.length) {
+            setHint('branchHint', '<i class="fas fa-exclamation-triangle"></i> No branches found — type the address below.', 'warn');
+            populateBranchDropdown([]);
+        } else {
+            setHint('branchHint', `<i class="fas fa-check-circle"></i> Found <strong>${final.length} Singapore locations</strong> — pick one or type an address.`, 'success');
+            populateBranchDropdown(final);
+        }
+    } catch(e) {
+        console.error('[OneMap branches]', e);
+        setHint('branchHint', '<i class="fas fa-exclamation-triangle"></i> Branch search failed — type the address below.', 'warn');
+        populateBranchDropdown([]);
+    }
+}
+function populateBranchDropdown(branches) {
+    const bs = document.getElementById('branchSelect');
+    document.getElementById('manualAddrWrapper').style.display = 'block';
+    // Only show branches that have an address (filter out OSM nodes with empty addr tags)
+    const addressedBranches = (branches || []).map((b, i) => ({ b, i })).filter(({ b }) => b.address && b.address.trim());
+    if (addressedBranches.length) {
+        bs.style.display = 'block'; bs.size = 1;
+        const skipped = (branches ? branches.length : 0) - addressedBranches.length;
+        const skipNote = skipped > 0 ? `<option disabled>─── ${skipped} location(s) omitted (no address data) ───</option>` : '';
+        bs.innerHTML = '<option value="">— Pick a branch / location —</option>' +
+            addressedBranches.map(({ b, i }) => {
+                const addr = (b.address || '').substring(0, 80) + ((b.address || '').length > 80 ? '…' : '');
+                return `<option value="${i}">📍 ${escapeHtml(b.name)} — ${escapeHtml(addr)}</option>`;
+            }).join('') + skipNote;
+        bs.onchange = function() {
+            const b = branches[parseInt(this.value)]; if (!b) return;
+            document.getElementById('selectedAddress').value = b.address || '';
+            document.getElementById('selectedLat').value = b.lat;
+            document.getElementById('selectedLng').value = b.lng;
+            document.getElementById('selectedPlaceId').value = b.place_id || '';
+            showBranchPill(b.address || b.name);
+            bs.style.display = 'none'; this.blur(); setMapPreview(b.lat, b.lng);
+            setHint('branchHint', '<i class="fas fa-check-circle"></i> Branch selected — edit address below if needed.', 'success');
+        };
+    } else { bs.style.display = 'none'; bs.innerHTML = ''; }
+}
+
+// ═══════════════════════════════════════════════
+//  SAVE / EDIT / DELETE
+// ═══════════════════════════════════════════════
+let _saving = false;
+async function saveStore() {
+    if (_saving) return; // prevent double-click
+    const name = storeInput.value.trim();
+    let address = document.getElementById('selectedAddress').value.trim() || document.getElementById('manualAddress').value.trim();
+    const foodType = document.getElementById('foodType').value.trim();
+    const sawa = validateRating(document.getElementById('sawaRating').value);
+    const kaeden = validateRating(document.getElementById('kaedenRating').value);
+    const comment = document.getElementById('commentsTxt').value.trim();
+    let lat = document.getElementById('selectedLat').value, lng = document.getElementById('selectedLng').value;
+    if (!currentUser) { openAuthModal(); return; }
+    if (!name) { alert('Please enter a store name.'); return; }
+    if (!address) { alert('Please provide an address.'); return; }
+    if (!foodType) { alert('Please add a food category.'); return; }
+    if (sawa === null || kaeden === null) { alert('Scores must be 0–100.'); return; }
+    let fLat = lat ? parseFloat(lat) : null, fLng = lng ? parseFloat(lng) : null;
+    const btn = document.getElementById('saveStoreBtn');
+    if (!fLat || !fLng) {
+        btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Finding on map…';
+        const geo = await geocodeAddress(address, name);
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save yummy spot';
+        if (geo) { fLat = geo.lat; fLng = geo.lng; }
+        else if (!confirm(`Couldn't pin "${address}" on the map.\nSave anyway without a map marker?`)) return;
+    }
+    const finalScore = Math.round(((sawa + kaeden) / 2) * 10) / 10;
+    const storeData = { name, address, foodType, sawaRating: sawa, kaedenRating: kaeden, finalScore, comment, lat: fLat, lng: fLng };
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving…';
+    _saving = true;
+    try {
+        if (editMode && editingStoreId) {
+            await updateStoreInDB(editingStoreId, storeData);
+            const idx = stores.findIndex(s => String(s.id) === String(editingStoreId));
+            if (idx !== -1) { stores[idx] = { ...stores[idx], ...storeData }; if (markersLayer[editingStoreId]) map.removeLayer(markersLayer[editingStoreId]); delete markersLayer[editingStoreId]; }
+            cancelEdit(); updateUI(); if (map && fLat && fLng) map.setView([fLat, fLng], 16);
+        } else {
+            const newId = await saveStoreToDB(storeData);
+            if (newId) { stores.unshift({ id: newId, ...storeData }); updateUI(); clearForm(); if (fLat && fLng) map.setView([fLat, fLng], 16); }
+        }
+    } finally {
+        _saving = false;
+        btn.disabled = false; btn.innerHTML = editMode ? '<i class="fas fa-edit"></i> Update store' : '<i class="fas fa-save"></i> Save yummy spot';
+    }
+}
+function clearForm() {
+    storeInput.value = '';
+    ['selectedPlaceId','selectedAddress','selectedLat','selectedLng','foodType','sawaRating','kaedenRating','commentsTxt','manualAddress'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('branchSelect').style.display = 'none'; document.getElementById('branchSelect').innerHTML = '';
+    document.getElementById('manualAddrWrapper').style.display = 'block';
+    document.getElementById('selectedBranchPill').classList.remove('visible');
+    document.getElementById('pillAddrText').textContent = '';
+    document.getElementById('addressSuggestions').style.display = 'none';
+    setHint('branchHint', '<i class="fas fa-magic"></i> Search a store name above, or type an address below.', '');
+    currentSelectedStore = null; currentBranchResults = []; suggestionsDiv.style.display = 'none'; clearMapPreview();
+}
+function cancelEdit() { editMode = false; editingStoreId = null; clearForm(); document.getElementById('saveStoreBtn').innerHTML = '<i class="fas fa-save"></i> Save yummy spot'; document.getElementById('cancelEditBtn').style.display = 'none'; }
+function enableEdit(store) {
+    formCardWrapper.classList.remove('mode-hidden');
+    if (currentView === 'list' || currentView === 'map') { currentView = 'split'; applyViewMode(); }
+    editMode = true; editingStoreId = store.id; storeInput.value = store.name;
+    document.getElementById('selectedAddress').value = store.address; document.getElementById('selectedLat').value = store.lat; document.getElementById('selectedLng').value = store.lng;
+    document.getElementById('foodType').value = store.foodType; document.getElementById('sawaRating').value = store.sawaRating ?? ''; document.getElementById('kaedenRating').value = store.kaedenRating ?? '';
+    document.getElementById('commentsTxt').value = store.comment || ''; document.getElementById('manualAddress').value = store.address; document.getElementById('selectedPlaceId').value = store.place_id || '';
+    document.getElementById('saveStoreBtn').innerHTML = '<i class="fas fa-edit"></i> Update store'; document.getElementById('cancelEditBtn').style.display = 'flex';
+    document.getElementById('branchSelect').style.display = 'none'; document.getElementById('branchSelect').innerHTML = ''; document.getElementById('manualAddrWrapper').style.display = 'block';
+    setHint('branchHint', '<i class="fas fa-pen"></i> Edit name or address — map syncs live.', '');
+    if (store.address) showBranchPill(store.address);
+    if (store.lat && store.lng) setMapPreview(store.lat, store.lng);
+    formCardWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { if (map) map.invalidateSize(); }, 250);
+}
+async function deleteStore(id) {
+    if (!confirm('Remove this memory?')) return;
+    if (markersLayer[id]) map.removeLayer(markersLayer[id]); delete markersLayer[id];
+    stores = stores.filter(s => String(s.id) !== String(id)); updateUI();
+    if (!stores.length && map) map.setView([1.3521, 103.8198], 12);
+    await deleteStoreFromDB(id);
+}
+
+// ═══════════════════════════════════════════════
+//  MAIN INIT — runs after DOM ready
+// ═══════════════════════════════════════════════
+function initApp() {
+    // Wire DOM refs
+    leftPanel = document.getElementById('leftPanel');
+    rightPanel = document.getElementById('rightPanel');
+    handle = document.getElementById('resizeHandle');
+    dashboardDiv = document.getElementById('dashboardContainer');
+    formCardWrapper = document.getElementById('formCardWrapper');
+    listViewExtras = document.getElementById('listViewExtras');
+    storeInput = document.getElementById('storeNameInput');
+    suggestionsDiv = document.getElementById('storeNameSelect');
+    manualAddrInput = document.getElementById('manualAddress');
+    addrSugDiv = document.getElementById('addressSuggestions');
+
+    // Init resize (map init happens after applyViewMode so panel has dimensions)
+    initResize();
+
+    // Mobile defaults
+    const isMobile = window.innerWidth <= 700;
+    if (isMobile) currentView = 'list';
+
+    // Store name autocomplete
+    storeInput.addEventListener('input', function() {
+        const q = this.value.trim();
+        if (q.length < 1) { suggestionsDiv.style.display = 'none'; return; }
+        if (acDebounce) clearTimeout(acDebounce);
+        acDebounce = setTimeout(() => {
+            getStorePredictions(q, (preds, status) => {
+                if (!preds.length) {
+                    // Show "no stores found" but allow manual entry
+                    suggestionsDiv.innerHTML = '<div class="suggestion-no-results">No stores found — you can type the name manually</div>';
+                    suggestionsDiv.style.display = 'block';
+                    return;
+                }
+                renderDropdown(suggestionsDiv, preds.map(f => ({
+                    placeId: f.properties.place_id,
+                    name: f.properties.name || '',
+                    secondary: f.properties.city || 'Singapore'
+                })), (placeId, selectedName) => {
+                    storeInput.value = selectedName;
+                    suggestionsDiv.style.display = 'none';
+                    clearBranchSelection(); clearMapPreview();
+                    fetchAllBranchesForBrand(selectedName);
+                });
+            });
+        }, 200);
+    });
+
+    // Enter on store name = force branch search
+    storeInput.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault(); suggestionsDiv.style.display = 'none';
+        const name = this.value.trim(); if (!name) return;
+        clearBranchSelection(); fetchAllBranchesForBrand(name, null);
+    });
+
+    // Address field autocomplete + live geocode
+    manualAddrInput.addEventListener('input', function() {
+        document.getElementById('selectedBranchPill').classList.remove('visible');
+        document.getElementById('selectedAddress').value = '';
+        document.getElementById('selectedLat').value = '';
+        document.getElementById('selectedLng').value = '';
+        const q = this.value.trim();
+        if (addrDebounce) clearTimeout(addrDebounce);
+        addrDebounce = setTimeout(async () => {
+            if (q.length < 3) { addrSugDiv.style.display = 'none'; return; }
+            getAddressPredictions(q, preds => {
+                if (!preds.length) { addrSugDiv.style.display = 'none'; return; }
+                positionDropdown(addrSugDiv, manualAddrInput);
+                renderDropdown(addrSugDiv, preds.map(f => ({
+                    placeId: f.place_id,
+                    name: f.properties.name || '',
+                    secondary: f.properties.city || 'Singapore'
+                })), (placeId) => {
+                    addrSugDiv.style.display = 'none';
+                    // Resolve coords from Photon cache (no extra network call needed)
+                    const cached = _photonCache.get(placeId);
+                    if (!cached) return;
+                    const lat = cached.lat, lng = cached.lng;
+                    const addr = manualAddrInput.value.trim() || cached.address || '';
+                    document.getElementById('selectedAddress').value = addr;
+                    document.getElementById('selectedLat').value = lat;
+                    document.getElementById('selectedLng').value = lng;
+                    document.getElementById('selectedPlaceId').value = placeId;
+                    showBranchPill(addr); setMapPreview(lat, lng);
+                    setHint('branchHint', '<i class="fas fa-check-circle"></i> Location set.', 'success');
+                });
+            });
+            // Live map pin from geocoder
+            if (q.length >= 5) {
+                const geo = await geocodeAddress(q, storeInput.value.trim());
+                if (geo && !document.getElementById('selectedLat').value) {
+                    document.getElementById('selectedLat').value = geo.lat;
+                    document.getElementById('selectedLng').value = geo.lng;
+                    document.getElementById('selectedAddress').value = q;
+                    setMapPreview(geo.lat, geo.lng);
+                }
+            }
+        }, 350);
+    });
+    manualAddrInput.addEventListener('change', async function() {
+        const addr = this.value.trim();
+        if (!addr || document.getElementById('selectedLat').value) return;
+        const geo = await geocodeAddress(addr, storeInput.value.trim());
+        if (geo) { document.getElementById('selectedLat').value = geo.lat; document.getElementById('selectedLng').value = geo.lng; document.getElementById('selectedAddress').value = addr; setMapPreview(geo.lat, geo.lng); }
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('pointerdown', e => {
+        if (suggestionsDiv && !suggestionsDiv.contains(e.target) && e.target !== storeInput) suggestionsDiv.style.display = 'none';
+        if (addrSugDiv && !addrSugDiv.contains(e.target) && e.target !== manualAddrInput) addrSugDiv.style.display = 'none';
+    });
+
+    // Reposition fixed address dropdown when the left panel scrolls
+    leftPanel.addEventListener('scroll', () => {
+        if (addrSugDiv && addrSugDiv.style.display !== 'none') positionDropdown(addrSugDiv, manualAddrInput);
+    }, { passive: true });
+
+    // Mobile FAB
+    document.getElementById('mobileAddFab').addEventListener('click', () => { currentView = 'split'; applyViewMode(); setTimeout(() => formCardWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); });
+
+    // Store grid interaction
+    document.getElementById('storesGridContainer').addEventListener('pointerdown', e => {
+        const edit = e.target.closest('.edit-btn'); if (edit) { e.preventDefault(); e.stopPropagation(); const s = findStoreById(edit.dataset.id); if (s) enableEdit(s); return; }
+        const del = e.target.closest('.delete-btn'); if (del) { e.preventDefault(); e.stopPropagation(); const s = findStoreById(del.dataset.id); if (s) deleteStore(s.id); return; }
+        const card = e.target.closest('.store-card');
+        if (card && !e.target.closest('.action-buttons')) { const s = findStoreById(card.dataset.id); if (s && markersLayer[s.id]) { if (isMobile) { currentView = 'map'; applyViewMode(); setTimeout(() => { map.setView([s.lat, s.lng], 16); markersLayer[s.id].openPopup(); }, 150); } else { map.setView([s.lat, s.lng], 16); if (currentView !== 'list') markersLayer[s.id].openPopup(); } } }
+    });
+
+    // Buttons & controls
+    document.getElementById('saveStoreBtn').addEventListener('click', saveStore);
+    document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
+    document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => { currentView = btn.dataset.view; applyViewMode(); }));
+    document.querySelectorAll('.sort-btn').forEach(btn => btn.addEventListener('click', () => { document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); currentSort = btn.dataset.sort; refreshFiltersAndGrid(); }));
+    [document.getElementById('sawaRating'), document.getElementById('kaedenRating')].forEach(inp => inp.addEventListener('input', () => { let v = parseInt(inp.value); if (isNaN(v)) return; if (v < 0) inp.value = 0; if (v > 100) inp.value = 100; }));
+    document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+    document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+    document.getElementById('signupConfirm').addEventListener('keydown', e => { if (e.key === 'Enter') handleSignup(); });
+
+    applyViewMode();
+    // Init map after applyViewMode so the right panel has proper flex dimensions
+    requestAnimationFrame(() => { initMap(); });
+    initAuth();
+}
+
+document.addEventListener('DOMContentLoaded', () => initApp());
+</script>
+</body>
+</html>
